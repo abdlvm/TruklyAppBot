@@ -1,0 +1,15 @@
+{
+  "name": "trukly-app-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot to track weekly truck mileage and rent",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node src/bot.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.0",
+    "dotenv": "^16.4.5",
+    "grammy": "^1.38.4"
+  }
+}
