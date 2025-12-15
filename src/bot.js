@@ -1,134 +1,101 @@
-const { Bot } = require('grammy');
-const db = require('./db');
+const { Bot, Keyboard } = require('grammy');
+const db = require('./db'); // your better-sqlite3 instance
 const { BOT_TOKEN } = require('./config');
 const runMigrations = require('./db/migrations');
 
+// Handlers
 const rateHandler = require('./handlers/rate.handler');
+const rentHandler = require('./handlers/rent.handler');
 const startWeekHandler = require('./handlers/startWeek.handler');
-
-runMigrations();
+const endWeekHandler = require('./handlers/endWeek.handler');
 
 if (!BOT_TOKEN) {
-  console.error('❌ BOT_TOKEN is missing in .env');
+  console.error('❌ BOT_TOKEN missing');
   process.exit(1);
 }
 
+// Run migrations
+runMigrations();
+
+// Create bot
 const bot = new Bot(BOT_TOKEN);
 
-/**
- * /start
- */
+// ===== /start command =====
 bot.command('start', async (ctx) => {
   const telegramId = ctx.from.id;
 
+  // Insert user if not exists
   db.prepare(`
     INSERT OR IGNORE INTO users (telegram_id, input_state)
-    VALUES (?, 'EXPECT_RATE')
+    VALUES (?, NULL)
   `).run(telegramId);
 
-  db.prepare(`
-    UPDATE users SET input_state = 'EXPECT_RATE'
-    WHERE telegram_id = ?
-  `).run(telegramId);
+  // Reply keyboard
+  const keyboard = new Keyboard()
+    // First row: 2 buttons
+  .text('Set Rate 💲').text('Set Weekly Rent 🚛').row()
+  // Second row: 2 buttons
+  .text('Start Week 🚩').text('End Week 🏁').row()
+  // Third row: 2 buttons
+  .text('Last Week 📊').text('Help ❓');
 
   await ctx.reply(
 `🚚 Welcome to TruklyAppBot
 
-Please enter your per-mile rate.
-Example: 0.25`
+Use the buttons below to navigate.`,
+    { reply_markup: keyboard }
   );
 });
 
-/**
- * /rate
- */
-bot.command('rate', async (ctx) => {
-  const telegramId = ctx.from.id;
-
-  const openWeek = db.prepare(`
-    SELECT id FROM weeks
-    WHERE telegram_id = ? AND status = 'OPEN'
-  `).get(telegramId);
-
-  if (openWeek) {
-    await ctx.reply('❌ You cannot change rate while a week is open.');
-    return;
-  }
-
-  db.prepare(`
-    UPDATE users
-    SET input_state = 'EXPECT_RATE'
-    WHERE telegram_id = ?
-  `).run(telegramId);
-
-  await ctx.reply('Enter your per-mile rate (example: 13 = $0.13)');
-});
-
-// bot.command('rate', async (ctx) => {
-//   db.prepare(`
-//     UPDATE users SET input_state = 'EXPECT_RATE'
-//     WHERE telegram_id = ?
-//   `).run(ctx.from.id);
-
-//   await ctx.reply('Enter your per-mile rate (example: 0.13)');
-// });
-
-/**
- * /startweek
- */
-bot.command('startweek', async (ctx) => {
-  db.prepare(`
-    UPDATE users SET input_state = 'EXPECT_START_MILEAGE'
-    WHERE telegram_id = ?
-  `).run(ctx.from.id);
-
-  await ctx.reply('Enter starting odometer mileage 🚩:');
-});
-
-/**
- * Handle numeric input by state
- */
+// ===== Button / Text router =====
 bot.on('message:text', async (ctx) => {
   const text = ctx.message.text.trim();
-  if (text.startsWith('/')) return;
+  const telegramId = ctx.from.id;
 
-  const user = db.prepare(`
-    SELECT * FROM users WHERE telegram_id = ?
-  `).get(ctx.from.id);
+  const user = db.prepare(`SELECT * FROM users WHERE telegram_id = ?`).get(telegramId);
+  if (!user) return ctx.reply('Please start with /start');
 
-  if (!user) {
-    await ctx.reply('Please use /start first');
-    return;
+  switch (text) {
+    case 'Set Rate 💲':
+      db.prepare(`UPDATE users SET input_state = 'EXPECT_RATE' WHERE telegram_id = ?`).run(telegramId);
+      return ctx.reply('Enter per-mile rate (example: 0.13)');
+    case 'Set Weekly Rent 🚛':
+      db.prepare(`UPDATE users SET input_state = 'EXPECT_WEEKLY_RENT' WHERE telegram_id = ?`).run(telegramId);
+      return ctx.reply('Enter weekly truck rent (example: 850)');
+    case 'Start Week 🚩':
+      db.prepare(`UPDATE users SET input_state = 'EXPECT_START_MILEAGE' WHERE telegram_id = ?`).run(telegramId);
+      return ctx.reply('Enter starting odometer mileage:');
+    case 'End Week 🏁':
+      db.prepare(`UPDATE users SET input_state = 'EXPECT_END_MILEAGE' WHERE telegram_id = ?`).run(telegramId);
+      return ctx.reply('Enter ending odometer mileage:');
+    case 'Last Week 📊':
+      return ctx.reply('Feature coming soon!');
+    case 'Help ❓':
+      return ctx.reply('Feature coming soon!');
+    default:
+      // fallback to typed input_state
+      switch (user.input_state) {
+        case 'EXPECT_RATE':
+          return rateHandler(ctx);
+        case 'EXPECT_WEEKLY_RENT':
+          return rentHandler(ctx);
+        case 'EXPECT_START_MILEAGE':
+          return startWeekHandler(ctx);
+        case 'EXPECT_END_MILEAGE':
+          return endWeekHandler(ctx);
+        default:
+          return ctx.reply('ℹ️ Use buttons or commands to navigate.');
+      }
   }
-
-  if (user.input_state === 'EXPECT_RATE') {
-    await rateHandler(ctx);
-    return;
-  }
-
-  if (user.input_state === 'EXPECT_START_MILEAGE') {
-    await startWeekHandler(ctx);
-    return;
-  }
-
-  await ctx.reply('ℹ️ Use /rate or /startweek');
 });
 
+// ===== Error handler =====
+bot.catch((err) => console.error('🤖 Bot error:', err));
+
+// ===== Start bot =====
 bot.start();
-console.log('🤖 TruklyAppBot running');
+console.log('🤖 TruklyAppBot is running');
 
-bot.catch((err) => {
-  console.error('BOT ERROR:', err);
-});
-
-process.on('SIGINT', async () => {
-  console.log('🛑 SIGINT received, stopping bot...');
-  await bot.stop();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('🛑 SIGTERM received, stopping bot...');
-  await bot.stop();
-  process.exit(0);
-});
+// ===== Graceful shutdown =====
+process.on('SIGINT', async () => { await bot.stop(); process.exit(0); });
+process.on('SIGTERM', async () => { await bot.stop(); process.exit(0); });

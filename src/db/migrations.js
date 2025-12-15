@@ -1,68 +1,36 @@
-// const db = require('./index');
+const db = require('./index'); // better-sqlite3 instance
 
-// function runMigrations() {
-//   // USERS
-//   db.prepare(`
-//     CREATE TABLE IF NOT EXISTS users (
-//       telegram_id INTEGER PRIMARY KEY,
-//       per_mile_rate REAL,
-//       state TEXT DEFAULT 'IDLE',
-//       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-//     )
-//   `).run();
-
-//   // ACTIVE WEEK
-//   db.prepare(`
-//     CREATE TABLE IF NOT EXISTS active_week (
-//       telegram_id INTEGER PRIMARY KEY,
-//       start_odometer INTEGER NOT NULL,
-//       start_date DATETIME DEFAULT CURRENT_TIMESTAMP
-//     )
-//   `).run();
-
-//   // WEEKLY HISTORY
-//   db.prepare(`
-//     CREATE TABLE IF NOT EXISTS weekly_history (
-//       id INTEGER PRIMARY KEY AUTOINCREMENT,
-//       telegram_id INTEGER,
-//       start_odometer INTEGER,
-//       end_odometer INTEGER,
-//       miles INTEGER,
-//       cost REAL,
-//       week_start DATETIME,
-//       week_end DATETIME,
-//       payment_status TEXT DEFAULT 'OWED',
-//       reminder_sent INTEGER DEFAULT 0
-//     )
-//   `).run();
-
-//   db.prepare(`
-//   ALTER TABLE users
-//   ADD COLUMN input_state TEXT DEFAULT 'IDLE'
-// `).run();
-
-// }
-
-// module.exports = runMigrations;
-
-const db = require('./index');
-
-module.exports = function runMigrations() {
+function runMigrations() {
+  // Users table
   db.prepare(`
     CREATE TABLE IF NOT EXISTS users (
-      telegram_id INTEGER PRIMARY KEY,
-      per_mile_rate REAL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      telegram_id INTEGER UNIQUE,
+      per_mile_rate REAL DEFAULT 0,
+      weekly_rent REAL DEFAULT 0,
       input_state TEXT DEFAULT 'IDLE'
     )
   `).run();
 
+  // Weeks table
   db.prepare(`
     CREATE TABLE IF NOT EXISTS weeks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       telegram_id INTEGER,
-      start_mileage INTEGER,
-      end_mileage INTEGER,
-      status TEXT
+      start_mileage REAL,
+      end_mileage REAL,
+      rate REAL DEFAULT 0,
+      weekly_rent REAL DEFAULT 0,
+      total_miles REAL DEFAULT 0,
+      mileage_amount REAL DEFAULT 0,
+      total_owed REAL DEFAULT 0,
+      status TEXT DEFAULT 'OPEN',
+      started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      ended_at TIMESTAMP
     )
   `).run();
-};
+
+  console.log('✅ Migrations ran successfully');
+}
+
+module.exports = runMigrations;
