@@ -8,6 +8,8 @@ const rateHandler = require('./handlers/rate.handler');
 const rentHandler = require('./handlers/rent.handler');
 const startWeekHandler = require('./handlers/startWeek.handler');
 const endWeekHandler = require('./handlers/endWeek.handler');
+const lastWeekHandler = require('./handlers/lastWeek.handler');
+
 
 if (!BOT_TOKEN) {
   console.error('❌ BOT_TOKEN missing');
@@ -19,6 +21,8 @@ runMigrations();
 
 // Create bot
 const bot = new Bot(BOT_TOKEN);
+require('./scheduler'); // starts Friday reminder
+
 
 // ===== /start command =====
 bot.command('start', async (ctx) => {
@@ -69,7 +73,7 @@ bot.on('message:text', async (ctx) => {
       db.prepare(`UPDATE users SET input_state = 'EXPECT_END_MILEAGE' WHERE telegram_id = ?`).run(telegramId);
       return ctx.reply('Enter ending odometer mileage:');
     case 'Last Week 📊':
-      return ctx.reply('Feature coming soon!');
+      return lastWeekHandler(ctx);
     case 'Help ❓':
       return ctx.reply('Feature coming soon!');
     default:
